@@ -599,7 +599,7 @@ fn update_step(
 
 pub type DeltaTimeInSeconds = f32;
 
-const S_PER_UPDATE: DeltaTimeInSeconds = 1./(240. * 100_000.);
+const S_PER_UPDATE: DeltaTimeInSeconds = 1./240.;
 
 pub fn update(
     state: &mut State,
@@ -618,14 +618,11 @@ pub fn update(
 
     let input = Input::from_flags(input_flags);
 
-    let mut update_count = 0;
     while dt >= S_PER_UPDATE {
         update_step(state, input);
 
         dt -= S_PER_UPDATE;
-        update_count += 1;
     }
-    dbg!(update_count);
 
     for i in 0..TILES_LENGTH {
         let tile_data = state.board.tiles.tiles[i];
