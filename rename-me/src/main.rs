@@ -235,7 +235,7 @@ mod raylib_rs_platform {
         const OUTLINE: Color = WHITE;
 
         let mut show_stats = false;
-        use std::time::{Instant, Duration};
+        use std::time::Instant;
         struct TimeSpan {
             start: Instant,
             end: Instant,
@@ -493,30 +493,8 @@ mod raylib_rs_platform {
 
             current_stats.render.end = Instant::now();
 
-            let raylib_dt_duration = Duration::from_secs_f32(dt);
-
-            dbg!(raylib_dt_duration);
-
-            let stats_dt_duration = prev_stats.loop_body.end - prev_stats.loop_body.start;
-
-            dbg!(stats_dt_duration);
-
-            let used_time = current_stats.render.end - current_stats.loop_body.start;
-
-            dbg!(used_time);
-
-            let left_over_time = 
-                Duration::from_nanos(16_666_667)
-                .saturating_sub(used_time);
-
-            dbg!(left_over_time);
-
-            // `std::thread:sleep` only guarentees that the thread will sleep
-            // for at least the given amount of time. Slightly under-sleeping
-            // seems better than slightly over-sleeping.
-            const SLEEP_FUDGE: Duration = Duration::from_nanos(1 << 16);
-
-            std::thread::sleep(left_over_time.saturating_sub(SLEEP_FUDGE));
+            // Have Raylib perform the frame waiting.
+            drop(d);
 
             current_stats.loop_body.end = Instant::now();
 
