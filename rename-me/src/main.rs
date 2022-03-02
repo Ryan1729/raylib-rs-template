@@ -226,7 +226,7 @@ mod raylib_rs_platform {
         let mut commands = Storage(Vec::with_capacity(1024));
 
         // generate the commands for the first frame
-        game::update(&mut state, &mut commands, 0, draw_wh(&rl));
+        game::update(&mut state, &mut commands, 0, draw_wh(&rl), rl.get_frame_time());
 
         const BACKGROUND: Color = Color{ r: 0x22, g: 0x22, b: 0x22, a: 255 };
         const WHITE: Color = Color{ r: 0xee, g: 0xee, b: 0xee, a: 255 };
@@ -235,7 +235,7 @@ mod raylib_rs_platform {
         const OUTLINE: Color = WHITE;
 
         let mut show_stats = false;
-        use std::time::Instant;
+        use std::time::{Instant, Duration};
         struct TimeSpan {
             start: Instant,
             end: Instant,
@@ -275,6 +275,8 @@ mod raylib_rs_platform {
             let mut current_stats = FrameStats::default();
             current_stats.loop_body.start = Instant::now();
             current_stats.input_gather.start = current_stats.loop_body.start;
+
+            let dt = rl.get_frame_time();
 
             if rl.is_key_pressed(KEY_F11) {
                 rl.toggle_fullscreen();
@@ -329,7 +331,8 @@ mod raylib_rs_platform {
                 &mut state,
                 &mut commands,
                 input_flags,
-                draw_wh(&rl)
+                draw_wh(&rl),
+                dt
             );
 
             current_stats.update.end = Instant::now();
@@ -489,7 +492,33 @@ mod raylib_rs_platform {
             );
 
             current_stats.render.end = Instant::now();
-            current_stats.loop_body.end = current_stats.render.end;
+
+            let raylib_dt_duration = Duration::from_secs_f32(dt);
+
+            dbg!(raylib_dt_duration);
+
+            let stats_dt_duration = prev_stats.loop_body.end - prev_stats.loop_body.start;
+
+            dbg!(stats_dt_duration);
+
+            let used_time = current_stats.render.end - current_stats.loop_body.start;
+
+            dbg!(used_time);
+
+            let left_over_time = 
+                Duration::from_nanos(16_666_667)
+                .saturating_sub(used_time);
+
+            dbg!(left_over_time);
+
+            // `std::thread:sleep` only guarentees that the thread will sleep
+            // for at least the given amount of time. Slightly under-sleeping
+            // seems better than slightly over-sleeping.
+            const SLEEP_FUDGE: Duration = Duration::from_nanos(1 << 16);
+
+            std::thread::sleep(left_over_time.saturating_sub(SLEEP_FUDGE));
+
+            current_stats.loop_body.end = Instant::now();
 
             prev_stats = current_stats;
         }

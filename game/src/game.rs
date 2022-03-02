@@ -499,22 +499,10 @@ impl Input {
     }
 }
 
-pub fn update(
+fn update_step(
     state: &mut State,
-    commands: &mut dyn ClearableStorage<draw::Command>,
-    input_flags: InputFlags,
-    draw_wh: DrawWH,
+    input: Input,
 ) {
-    use draw::{TextSpec, TextKind, Command::*};
-
-    if draw_wh != state.sizes.draw_wh {
-        state.sizes = draw::fresh_sizes(draw_wh);
-    }
-
-    commands.clear();
-
-    let input = Input::from_flags(input_flags);
-
     use EyeState::*;
     use Input::*;
     use crate::Dir::*;
@@ -603,6 +591,42 @@ pub fn update(
         },
     }
 
+    state.animation_timer += 1;
+    if state.animation_timer >= ANIMATION_TIMER_LENGTH {
+        state.animation_timer = 0;
+    }
+}
+
+pub type DeltaTimeInSeconds = f32;
+
+const S_PER_UPDATE: DeltaTimeInSeconds = 1./(240. * 100_000.);
+
+pub fn update(
+    state: &mut State,
+    commands: &mut dyn ClearableStorage<draw::Command>,
+    input_flags: InputFlags,
+    draw_wh: DrawWH,
+    mut dt: DeltaTimeInSeconds,
+) {
+    use draw::{TextSpec, TextKind, Command::*};
+
+    if draw_wh != state.sizes.draw_wh {
+        state.sizes = draw::fresh_sizes(draw_wh);
+    }
+
+    commands.clear();
+
+    let input = Input::from_flags(input_flags);
+
+    let mut update_count = 0;
+    while dt >= S_PER_UPDATE {
+        update_step(state, input);
+
+        dt -= S_PER_UPDATE;
+        update_count += 1;
+    }
+    dbg!(update_count);
+
     for i in 0..TILES_LENGTH {
         let tile_data = state.board.tiles.tiles[i];
 
@@ -656,10 +680,5 @@ pub fn update(
             },
             kind: TextKind::UI,
         }));
-    }
-
-    state.animation_timer += 1;
-    if state.animation_timer >= ANIMATION_TIMER_LENGTH {
-        state.animation_timer = 0;
     }
 }
