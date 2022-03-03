@@ -655,8 +655,12 @@ fn update_step(
                 $(
                     state.board.eye.xy.$tile_method();
                 )+
-                if state.board.eye.xy != old_xy {
-                    state.board.eye.offset_xy = o_xy!{$($offset_tokens)*};
+                let o_xy = o_xy!{$($offset_tokens)*};
+                if state.board.eye.xy.x != old_xy.x {
+                    state.board.eye.offset_xy.x = o_xy.x;
+                }
+                if state.board.eye.xy.y != old_xy.y {
+                    state.board.eye.offset_xy.y = o_xy.y;
                 }
             }
         }
