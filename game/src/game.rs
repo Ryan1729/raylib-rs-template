@@ -108,7 +108,7 @@ pub mod draw;
 pub use draw::{
     DrawLength,
     DrawX,
-    DrawY, 
+    DrawY,
     DrawXY,
     DrawW,
     DrawH,
@@ -143,7 +143,7 @@ macro_rules! from_rng_enum_def {
             pub const ALL: [Self; Self::COUNT] = [
                 $(Self::$variants,)+
             ];
-        
+
             pub fn from_rng(rng: &mut Xs) -> Self {
                 Self::ALL[xs_u32(rng, 0, Self::ALL.len() as u32) as usize]
             }
@@ -290,7 +290,7 @@ mod tile {
                 (index % X::COUNT as usize) as Count
             )),
             y: Y(to_coord_or_default(
-                ((index % (XY::COUNT as usize) as usize) 
+                ((index % (XY::COUNT as usize) as usize)
                 / X::COUNT as usize) as Count
             )),
         }
@@ -308,7 +308,16 @@ fn draw_xy_from_tile(sizes: &Sizes, txy: tile::XY) -> DrawXY {
     }
 }
 
-/// A Tile should always be at a particular position, but that position should be 
+fn draw_xy_from_offset(sizes: &Sizes, o_xy: offset::XY) -> DrawXY {
+    let offset_size = sizes.tile_side_length / TILE_OFFSET as DrawLength;
+
+    DrawXY {
+        x: o_xy.x.0 as DrawLength * offset_size,
+        y: o_xy.y.0 as DrawLength * offset_size,
+    }
+}
+
+/// A Tile should always be at a particular position, but that position should be
 /// derivable from the tiles location in the tiles array, so it doesn't need to be
 /// stored. But, we often want to get the tile's data and it's location as a single
 /// thing. This is why we have both `Tile` and `TileData`
@@ -396,9 +405,139 @@ impl EyeState {
     }
 }
 
+mod offset {
+    use core::ops::{AddAssign, Add, SubAssign, Sub};
+
+    pub type Offset = i8;
+
+    #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Ord, PartialOrd, Hash)]
+    pub struct X(pub Offset);
+
+    impl AddAssign for X {
+        fn add_assign(&mut self, other: Self) {
+            self.0 += other.0;
+        }
+    }
+
+    impl Add for X {
+        type Output = Self;
+
+        fn add(mut self, other: Self) -> Self::Output {
+            self += other;
+            self
+        }
+    }
+
+    impl SubAssign for X {
+        fn sub_assign(&mut self, other: Self) {
+            self.0 -= other.0;
+        }
+    }
+
+    impl Sub for X {
+        type Output = Self;
+
+        fn sub(mut self, other: Self) -> Self::Output {
+            self -= other;
+            self
+        }
+    }
+
+    #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Ord, PartialOrd, Hash)]
+    pub struct Y(pub Offset);
+
+    impl AddAssign for Y {
+        fn add_assign(&mut self, other: Self) {
+            self.0 += other.0;
+        }
+    }
+
+    impl Add for Y {
+        type Output = Self;
+
+        fn add(mut self, other: Self) -> Self::Output {
+            self += other;
+            self
+        }
+    }
+
+    impl SubAssign for Y {
+        fn sub_assign(&mut self, other: Self) {
+            self.0 -= other.0;
+        }
+    }
+
+    impl Sub for Y {
+        type Output = Self;
+
+        fn sub(mut self, other: Self) -> Self::Output {
+            self -= other;
+            self
+        }
+    }
+
+    #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Ord, PartialOrd, Hash)]
+    pub struct XY {
+        pub x: X,
+        pub y: Y,
+    }
+
+    impl AddAssign for XY {
+        fn add_assign(&mut self, other: Self) {
+            self.x += other.x;
+            self.y += other.y;
+        }
+    }
+
+    impl Add for XY {
+        type Output = Self;
+
+        fn add(mut self, other: Self) -> Self::Output {
+            self += other;
+            self
+        }
+    }
+
+    impl SubAssign for XY {
+        fn sub_assign(&mut self, other: Self) {
+            self.x -= other.x;
+            self.y -= other.y;
+        }
+    }
+
+    impl Sub for XY {
+        type Output = Self;
+
+        fn sub(mut self, other: Self) -> Self::Output {
+            self -= other;
+            self
+        }
+    }
+
+    #[macro_export]
+    macro_rules! o_xy {
+        () => {
+            o_xy!{0, 0}
+        };
+        ($x: expr, $y: expr $(,)?) => {
+            offset::XY {
+                x: offset::X(
+                    $x,
+                ),
+                y: offset::Y(
+                    $y,
+                ),
+            }
+        }
+    }
+}
+
+const TILE_OFFSET: offset::Offset = 16;
+
 #[derive(Debug, Default)]
 struct Eye {
     xy: tile::XY,
+    offset_xy: offset::XY,
     state: EyeState,
 }
 
@@ -484,7 +623,7 @@ impl Input {
         } else if (INPUT_DOWN_DOWN | INPUT_LEFT_DOWN) & flags == (INPUT_DOWN_DOWN | INPUT_LEFT_DOWN) {
             Dir(DownLeft)
         } else if (INPUT_UP_DOWN | INPUT_LEFT_DOWN) & flags == (INPUT_UP_DOWN | INPUT_LEFT_DOWN) {
-            Dir(UpRight)
+            Dir(UpLeft)
         } else if INPUT_UP_DOWN & flags != 0 {
             Dir(Up)
         } else if INPUT_DOWN_DOWN & flags != 0 {
@@ -509,86 +648,166 @@ fn update_step(
 
     const HOLD_FRAMES: AnimationTimer = 30;
 
-    match input {
-        NoChange => match state.board.eye.state {
-            Idle => {
-                if state.animation_timer % (HOLD_FRAMES * 3) == 0 {
-                    state.board.eye.state = NarrowAnimCenter;
+    if state.board.eye.offset_xy == o_xy!{} {
+        macro_rules! offset_if_moved {
+            ($($tile_method: ident)+ {$($offset_tokens: tt)*}) => {
+                let old_xy = state.board.eye.xy;
+                $(
+                    state.board.eye.xy.$tile_method();
+                )+
+                if state.board.eye.xy != old_xy {
+                    state.board.eye.offset_xy = o_xy!{$($offset_tokens)*};
+                }
+            }
+        }
+
+        match input {
+            NoChange => match state.board.eye.state {
+                Idle => {
+                    if state.animation_timer % (HOLD_FRAMES * 3) == 0 {
+                        state.board.eye.state = NarrowAnimCenter;
+                    }
+                },
+                Moved(_) => {
+                    if state.animation_timer % HOLD_FRAMES == 0 {
+                        state.board.eye.state = Idle;
+                    }
+                },
+                SmallPupil => {
+                    if state.animation_timer % (HOLD_FRAMES * 3) == 0 {
+                        state.board.eye.state = Closed;
+                    }
+                },
+                Closed => {
+                    if state.animation_timer % (HOLD_FRAMES) == 0 {
+                        state.board.eye.state = HalfLid;
+                    }
+                },
+                HalfLid => {
+                    if state.animation_timer % (HOLD_FRAMES * 5) == 0 {
+                        state.board.eye.state = Idle;
+                    }
+                },
+                NarrowAnimCenter => {
+                    let modulus = state.animation_timer % (HOLD_FRAMES * 4);
+                    if modulus == 0 {
+                        state.board.eye.state = NarrowAnimRight;
+                    } else if modulus == HOLD_FRAMES * 2 {
+                        state.board.eye.state = NarrowAnimLeft;
+                    }
+                },
+                NarrowAnimLeft | NarrowAnimRight => {
+                    if state.animation_timer % HOLD_FRAMES == 0 {
+                        state.board.eye.state = NarrowAnimCenter;
+                    }
+                },
+            },
+            Dir(Up) => {
+                state.board.eye.state = Moved(Up);
+                offset_if_moved!{
+                    move_up
+                    {
+                        0,
+                        TILE_OFFSET
+                    }
                 }
             },
-            Moved(_) => {
-                if state.animation_timer % HOLD_FRAMES == 0 {
-                    state.board.eye.state = Idle;
+            Dir(UpRight) => {
+                state.board.eye.state = Moved(UpRight);
+                offset_if_moved!{
+                    move_up
+                    move_right
+                    {
+                        -TILE_OFFSET,
+                        TILE_OFFSET
+                    }
                 }
             },
-            SmallPupil => {
-                if state.animation_timer % (HOLD_FRAMES * 3) == 0 {
-                    state.board.eye.state = Closed;
+            Dir(Right) => {
+                state.board.eye.state = Moved(Right);
+                offset_if_moved!{
+                    move_right
+                    {
+                        -TILE_OFFSET,
+                        0,
+                    }
                 }
             },
-            Closed => {
-                if state.animation_timer % (HOLD_FRAMES) == 0 {
-                    state.board.eye.state = HalfLid;
+            Dir(DownRight) => {
+                state.board.eye.state = Moved(DownRight);
+                offset_if_moved!{
+                    move_down
+                    move_right
+                    {
+                        -TILE_OFFSET,
+                        -TILE_OFFSET,
+                    }
                 }
             },
-            HalfLid => {
-                if state.animation_timer % (HOLD_FRAMES * 5) == 0 {
-                    state.board.eye.state = Idle;
+            Dir(Down) => {
+                state.board.eye.state = Moved(Down);
+                offset_if_moved!{
+                    move_down
+                    {
+                        0,
+                        -TILE_OFFSET,
+                    }
                 }
             },
-            NarrowAnimCenter => {
-                let modulus = state.animation_timer % (HOLD_FRAMES * 4);
-                if modulus == 0 {
-                    state.board.eye.state = NarrowAnimRight;
-                } else if modulus == HOLD_FRAMES * 2 {
-                    state.board.eye.state = NarrowAnimLeft;
+            Dir(DownLeft) => {
+                state.board.eye.state = Moved(DownLeft);
+                offset_if_moved!{
+                    move_down
+                    move_left
+                    {
+                        TILE_OFFSET,
+                        -TILE_OFFSET,
+                    }
                 }
             },
-            NarrowAnimLeft | NarrowAnimRight => {
-                if state.animation_timer % HOLD_FRAMES == 0 {
-                    state.board.eye.state = NarrowAnimCenter;
+            Dir(Left) => {
+                state.board.eye.state = Moved(Left);
+                offset_if_moved!{
+                    move_left
+                    {
+                        TILE_OFFSET,
+                        0,
+                    }
                 }
             },
-        },
-        Dir(Up) => {
-            state.board.eye.state = Moved(Up);
-            state.board.eye.xy.move_up();
-        },
-        Dir(UpRight) => {
-            state.board.eye.state = Moved(UpRight);
-            state.board.eye.xy.move_up();
-            state.board.eye.xy.move_right();
-        },
-        Dir(Right) => {
-            state.board.eye.state = Moved(Right);
-            state.board.eye.xy.move_right();
-        },
-        Dir(DownRight) => {
-            state.board.eye.state = Moved(DownRight);
-            state.board.eye.xy.move_down();
-            state.board.eye.xy.move_right();
-        },
-        Dir(Down) => {
-            state.board.eye.state = Moved(Down);
-            state.board.eye.xy.move_down();
-        },
-        Dir(DownLeft) => {
-            state.board.eye.state = Moved(DownLeft);
-            state.board.eye.xy.move_down();
-            state.board.eye.xy.move_left();
-        },
-        Dir(Left) => {
-            state.board.eye.state = Moved(Left);
-            state.board.eye.xy.x = state.board.eye.xy.x.saturating_sub_one();
-        },
-        Dir(UpLeft) => {
-            state.board.eye.state = Moved(UpLeft);
-            state.board.eye.xy.move_up();
-            state.board.eye.xy.move_left();
-        },
-        Interact => {
-            state.board.eye.state = SmallPupil;
-        },
+            Dir(UpLeft) => {
+                state.board.eye.state = Moved(UpLeft);
+                offset_if_moved!{
+                    move_up
+                    move_left
+                    {
+                        TILE_OFFSET,
+                        TILE_OFFSET,
+                    }
+                }
+            },
+            Interact => {
+                state.board.eye.state = SmallPupil;
+            },
+        }
+    } else {
+        let o_xy = &mut state.board.eye.offset_xy;
+
+        if o_xy.x > offset::X(0) {
+           o_xy.x -= offset::X(1);
+        } else if o_xy.x < offset::X(0) {
+           o_xy.x += offset::X(1);
+        } else {
+            // Leave at zero
+        }
+
+        if o_xy.y > offset::Y(0) {
+           o_xy.y -= offset::Y(1);
+        } else if o_xy.y < offset::Y(0) {
+           o_xy.y += offset::Y(1);
+        } else {
+            // Leave at zero
+        }
     }
 
     state.animation_timer += 1;
@@ -637,7 +856,8 @@ pub fn update(
 
     commands.push(Sprite(SpriteSpec{
         sprite: state.board.eye.state.sprite(),
-        xy: draw_xy_from_tile(&state.sizes, state.board.eye.xy),
+        xy: draw_xy_from_tile(&state.sizes, state.board.eye.xy)
+        + draw_xy_from_offset(&state.sizes, state.board.eye.offset_xy),
     }));
 
     let left_text_x = state.sizes.play_xywh.x + MARGIN;
