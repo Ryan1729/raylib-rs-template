@@ -21,4 +21,4 @@ See the included `checklist` script for more details if needed.
 
 ____
 
-licensed under MIT OR Apache-2.0 at your option
+licensed under any combination of MIT OR Apache-2.0 OR MIT-0 at your option
